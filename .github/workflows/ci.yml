@@ -1,33 +1,29 @@
-name: Build and Push Docker Image
+name: Build, Push, and Update GitOps
 
 on:
   push:
     branches: [ "main" ]
 
-# 1. (Optional) General Permissions: 
-# You can leave this out if you set the repository default to "Read and write permissions" 
-# in the Settings > Actions > General tab, but it does no harm to keep it here.
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
-    
-    # 2. CRITICAL FIX: Explicitly set permissions at the job level.
-    # This guarantees the GITHUB_TOKEN has the 'write' scope for packages.
     permissions:
       contents: read
       packages: write 
-
+    outputs:
+      short_sha: ${{ steps.vars.outputs.short_sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 3. Log in to GHCR
-      # Uses github.actor (the user who triggered the workflow) and 
-      # the built-in GITHUB_TOKEN for authentication.
+      - name: Set Short SHA
+        id: vars
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -35,12 +31,39 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
           
-      # 4. Build and push image
-      # 'context' defaults to '.', which is the root of the checked-out repository.
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/flask-demo:latest
-          # Example of an additional tag for versioning:
-          # tags: ghcr.io/${{ github.repository_owner }}/flask-demo:${{ github.sha }}
+          # We push both 'latest' and the unique 'SHA' tag
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/flask-demo:latest
+            ghcr.io/${{ github.repository_owner }}/flask-demo:${{ steps.vars.outputs.short_sha }}
+
+  update-gitops:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitOps Repo (Repo B)
+        uses: actions/checkout@v4
+        with:
+          # Replace with your actual Repo B path
+          repository: ${{ github.repository_owner }}/flask-demo-gitops
+          token: ${{ secrets.GIT_OPS_PAT }}
+          path: gitops-repo
+
+      - name: Update Image Tag
+        run: |
+          cd gitops-repo
+          # Option 1: If using plain YAML (using 'yq' which is pre-installed on ubuntu-latest)
+          # Replace 'deployment.yaml' with your filename and update the path to the image field
+          yq -i '.spec.template.spec.containers[0].image = "ghcr.io/${{ github.repository_owner }}/flask-demo:${{ needs.build-and-push.outputs.short_sha }}"' deployment.yaml
+
+      - name: Commit and Push changes
+        run: |
+          cd gitops-repo
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .
+          git commit -m "Deploy version ${{ needs.build-and-push.outputs.short_sha }}"
+          git push
