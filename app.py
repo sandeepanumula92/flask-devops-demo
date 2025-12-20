@@ -28,7 +28,7 @@ def health():
 
 @app.route("/metrics")
 def metrics():
-    return generate_latest()
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
 @app.before_request
 def before_request():
