@@ -1,5 +1,5 @@
-from flask import Flask
-from prometheus_client import Counter, Histogram, generate_latest
+from flask import Flask, Response
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 import time
 
 app = Flask(__name__)
@@ -28,6 +28,7 @@ def health():
 
 @app.route("/metrics")
 def metrics():
+    # Now Response and CONTENT_TYPE_LATEST are defined
     return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
 @app.before_request
