@@ -19,7 +19,7 @@ REQUEST_LATENCY = Histogram(
 @app.route("/")
 def hello():
     REQUEST_COUNT.labels("GET", "/").inc()
-    return "Hello from Flask running in kubernetes (kind) with Metrics!"
+    return "Hello from Flask running in kubernetes (kind) with Metrics from Argo CD!"
 
 @app.route("/health")
 def health():
